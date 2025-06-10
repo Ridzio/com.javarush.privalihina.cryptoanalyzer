@@ -1,5 +1,6 @@
 package com.javarush.cryptoanalyzer.privalikhina;
 
+
 import com.javarush.cryptoanalyzer.privalikhina.app.Application;
 import com.javarush.cryptoanalyzer.privalikhina.controller.MainController;
 import com.javarush.cryptoanalyzer.privalikhina.entity.Result;
