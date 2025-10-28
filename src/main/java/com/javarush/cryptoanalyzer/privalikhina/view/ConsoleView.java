@@ -52,15 +52,28 @@ public class ConsoleView implements View {
         }
 
         // Ввод пути к выходному файлу/папке
-        System.out.print("Введите путь к выходному файлу или папке: ");
+        System.out.print("Введите путь к выходному файлу или папке (по умолчанию создается decode.txt рядом с входным файлом): ");
         String outputPathInput = scanner.nextLine().trim();
 
-        // Формируем корректный путь к выходному файлу
-        String outputFilePath = resolveOutputFilePath(outputPathInput, mode);
+        // Формируем путь к выходному файлу
+        String outputFilePath = resolveOutputFilePath(outputPathInput, mode, inputFilePath);
 
         if (outputFilePath == null) {
             System.out.println("Не удалось определить корректный путь для выходного файла.");
             return new String[]{UNSUPPORTED_FUNCTION};
+        }
+
+        // Создаём файл, если его ещё нет
+        Path outputFile = Paths.get(outputFilePath);
+        if (!Files.exists(outputFile)) {
+            try {
+                Files.createFile(outputFile);
+                System.out.println("Файл создан по пути: " + outputFile.toAbsolutePath());
+            } catch (IOException e) {
+                System.out.println("Не удалось создать файл: " + outputFile.toAbsolutePath());
+                e.printStackTrace();
+                return new String[]{UNSUPPORTED_FUNCTION};
+            }
         }
 
         if (mode.equals(BRUTEFORCE)) {
@@ -74,26 +87,23 @@ public class ConsoleView implements View {
     }
 
     /**
-     * Если введён путь к папке — создаёт дефолтный файл внутри.
-     * Если путь к файлу — проверяет корректность имени.
-     * Возвращает полный путь к выходному файлу.
+     * Расширенная версия resolveOutputFilePath:
+     * если путь пустой — создаётся decode.txt рядом с входным файлом.
      */
-    private String resolveOutputFilePath(String pathInput, String mode) {
+    private String resolveOutputFilePath(String pathInput, String mode, String inputFilePath) {
+        Path inputFile = Paths.get(inputFilePath);
+
         if (pathInput.isEmpty()) {
-            // Если ничего не ввели — используем дефолтные имена и папку текущую
-            return defaultFileNameForMode(mode);
+            return inputFile.getParent().resolve("decode.txt").toString();
         }
 
         Path path = Paths.get(pathInput);
 
         if (Files.exists(path)) {
             if (Files.isDirectory(path)) {
-                // Если это папка — добавляем дефолтное имя файла
-                Path filePath = path.resolve(defaultFileNameForMode(mode));
                 createFolderIfNotExists(path.toString());
-                return filePath.toString();
+                return path.resolve(defaultFileNameForMode(mode)).toString();
             } else if (Files.isRegularFile(path)) {
-                // Это файл — проверяем имя
                 if (isValidFileName(path.getFileName().toString())) {
                     createFolderIfNotExists(path.getParent().toString());
                     return path.toString();
@@ -106,24 +116,15 @@ public class ConsoleView implements View {
                 return null;
             }
         } else {
-            // Если файла/папки нет — пробуем понять, это папка или файл по расширению
             if (pathInput.endsWith(".txt")) {
-                // Вроде как файл, но его нет — создадим папку, если нужно, и вернём путь
                 Path parent = path.getParent();
-                if (parent != null) {
-                    createFolderIfNotExists(parent.toString());
-                }
-                if (isValidFileName(path.getFileName().toString())) {
-                    return path.toString();
-                } else {
-                    System.out.println("Имя файла содержит недопустимые символы.");
-                    return null;
-                }
+                if (parent != null) createFolderIfNotExists(parent.toString());
+                if (isValidFileName(path.getFileName().toString())) return path.toString();
+                System.out.println("Имя файла содержит недопустимые символы.");
+                return null;
             } else {
-                // Возможно папка, создаём её
                 createFolderIfNotExists(path.toString());
-                Path filePath = path.resolve(defaultFileNameForMode(mode));
-                return filePath.toString();
+                return path.resolve(defaultFileNameForMode(mode)).toString();
             }
         }
     }
