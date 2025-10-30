@@ -15,6 +15,7 @@ import static com.javarush.cryptoanalyzer.privalikhina.constants.FunctionCodeCon
 public class ConsoleView implements View {
 
     private static final String INVALID_CHARS = "[/\\\\:*?\"<>|]";
+    private static final String BRUTEFORCE_FOLDER_BASE = "bruteforce_outputs";
 
     @Override
     public String[] getParameters() {
@@ -52,53 +53,91 @@ public class ConsoleView implements View {
         }
 
         // Ввод пути к выходному файлу/папке
-        System.out.print("Введите путь к выходному файлу или папке (по умолчанию создается decode.txt рядом с входным файлом): ");
+        System.out.print("Введите путь к выходному файлу или папке (по умолчанию создается файл или папка рядом с входным файлом): ");
         String outputPathInput = scanner.nextLine().trim();
 
-        // Формируем путь к выходному файлу
+        // Формируем путь к выходному файлу или папке
         String outputFilePath = resolveOutputFilePath(outputPathInput, mode, inputFilePath);
 
         if (outputFilePath == null) {
-            System.out.println("Не удалось определить корректный путь для выходного файла.");
+            System.out.println("Не удалось определить корректный путь для выходного файла/папки.");
             return new String[]{UNSUPPORTED_FUNCTION};
         }
 
-        // Создаём файл, если его ещё нет
-        Path outputFile = Paths.get(outputFilePath);
-        if (!Files.exists(outputFile)) {
-            try {
-                Files.createFile(outputFile);
-                System.out.println("Файл создан по пути: " + outputFile.toAbsolutePath());
-            } catch (IOException e) {
-                System.out.println("Не удалось создать файл: " + outputFile.toAbsolutePath());
-                e.printStackTrace();
-                return new String[]{UNSUPPORTED_FUNCTION};
+        Path outputPath = Paths.get(outputFilePath);
+
+        // Для BRUTEFORCE: не создаём папку здесь — BruteForceDecoder создаст её и заполнит
+        if (mode.equals(BRUTEFORCE)) {
+            return new String[]{mode, inputFilePath, outputPath.toString()};
+        }
+
+        // Для ENCODE/DECODE — создаём файл, если его нет
+        try {
+            if (!Files.exists(outputPath)) {
+                // Убедимся, что родительская папка существует
+                if (outputPath.getParent() != null) {
+                    createFolderIfNotExists(outputPath.getParent().toString());
+                }
+                Files.createFile(outputPath);
+                System.out.println("Файл создан по пути: " + outputPath.toAbsolutePath());
+            }
+        } catch (IOException e) {
+            System.out.println("Не удалось создать файл: " + outputPath.toAbsolutePath());
+            e.printStackTrace();
+            return new String[]{UNSUPPORTED_FUNCTION};
+        }
+
+        // Для encode/decode нужно запросить сдвиг
+        System.out.print("Введите сдвиг (целое число): ");
+        String shift = scanner.nextLine().trim();
+        return new String[]{mode, inputFilePath, outputPath.toString(), shift};
+    }
+
+    /**
+     * Формирует путь к выходу.
+     * Для BRUTEFORCE возвращает уникальный путь к директории (не создаёт её).
+     * Для ENCODE/DECODE — возвращает путь к файлу (с уникализацией при совпадении).
+     */
+    private String resolveOutputFilePath(String pathInput, String mode, String inputFilePath) {
+        Path inputFile = Paths.get(inputFilePath);
+        Path parent = inputFile.getParent() != null ? inputFile.getParent() : Paths.get(".");
+
+        // --- BRUTEFORCE special handling (return unique dir path, do not create) ---
+        if (mode.equals(BRUTEFORCE)) {
+            if (pathInput.isEmpty()) {
+                Path unique = createUniqueDir(parent, BRUTEFORCE_FOLDER_BASE);
+                return unique.toString();
+            }
+
+            Path provided = Paths.get(pathInput);
+            if (Files.exists(provided)) {
+                if (Files.isDirectory(provided)) {
+                    // вернём уникальную подпапку внутри указанной директории (не создаём)
+                    return createUniqueDir(provided, BRUTEFORCE_FOLDER_BASE).toString();
+                } else if (Files.isRegularFile(provided)) {
+                    // если указали файл — используем его родительскую папку для создания уникальной папки
+                    Path pParent = provided.getParent() != null ? provided.getParent() : Paths.get(".");
+                    return createUniqueDir(pParent, BRUTEFORCE_FOLDER_BASE).toString();
+                } else {
+                    System.out.println("Указанный путь для брутфорса не является директорией/файлом.");
+                    return null;
+                }
+            } else {
+                // если путь не существует — считаем, что это папка (вернём уникальный путь)
+                return createUniqueDir(provided, BRUTEFORCE_FOLDER_BASE).toString();
             }
         }
 
-        if (mode.equals(BRUTEFORCE)) {
-            return new String[]{mode, inputFilePath, outputFilePath};
-        } else {
-            // Для encode/decode нужно запросить сдвиг
-            System.out.print("Введите сдвиг (целое число): ");
-            String shift = scanner.nextLine().trim();
-            return new String[]{mode, inputFilePath, outputFilePath, shift};
-        }
-    }
-
-    private String resolveOutputFilePath(String pathInput, String mode, String inputFilePath) {
-        Path inputFile = Paths.get(inputFilePath);
-
-        // Если путь пустой — создаем файл с безопасным именем по умолчанию
+        // --- ENCODE / DECODE handling ---
         if (pathInput.isEmpty()) {
-            String defaultFileName = defaultFileNameForMode(mode); // input.txt / output.txt / best.txt
-            Path outputPath = inputFile.getParent().resolve(defaultFileName);
+            String defaultFileName = defaultFileNameForMode(mode); // input.txt / output.txt
+            Path outputPath = parent.resolve(defaultFileName);
 
-            // Если файл уже существует, создаем уникальное имя
+            // Если имя совпадает с входным или файл уже существует — уникализируем
             int counter = 1;
-            while (Files.exists(outputPath)) {
+            while (Files.exists(outputPath) || outputPath.toAbsolutePath().normalize().equals(inputFile.toAbsolutePath().normalize())) {
                 String newFileName = defaultFileName.replace(".txt", "_" + counter + ".txt");
-                outputPath = inputFile.getParent().resolve(newFileName);
+                outputPath = parent.resolve(newFileName);
                 counter++;
             }
             return outputPath.toString();
@@ -109,10 +148,30 @@ public class ConsoleView implements View {
         if (Files.exists(path)) {
             if (Files.isDirectory(path)) {
                 createFolderIfNotExists(path.toString());
-                return path.resolve(defaultFileNameForMode(mode)).toString();
+                Path candidate = path.resolve(defaultFileNameForMode(mode));
+                // уникализируем, если совпадает с input
+                int counter = 1;
+                while (Files.exists(candidate) || candidate.toAbsolutePath().normalize().equals(inputFile.toAbsolutePath().normalize())) {
+                    String newFileName = defaultFileNameForMode(mode).replace(".txt", "_" + counter + ".txt");
+                    candidate = path.resolve(newFileName);
+                    counter++;
+                }
+                return candidate.toString();
             } else if (Files.isRegularFile(path)) {
                 if (isValidFileName(path.getFileName().toString())) {
                     createFolderIfNotExists(path.getParent().toString());
+                    // если указанный файл совпадает с входным — уникализируем имя рядом с входным
+                    if (path.toAbsolutePath().normalize().equals(inputFile.toAbsolutePath().normalize())) {
+                        String defaultFileName = defaultFileNameForMode(mode);
+                        Path alt = parent.resolve(defaultFileName);
+                        int counter = 1;
+                        while (Files.exists(alt)) {
+                            String newFileName = defaultFileName.replace(".txt", "_" + counter + ".txt");
+                            alt = parent.resolve(newFileName);
+                            counter++;
+                        }
+                        return alt.toString();
+                    }
                     return path.toString();
                 } else {
                     System.out.println("Имя файла содержит недопустимые символы.");
@@ -123,15 +182,24 @@ public class ConsoleView implements View {
                 return null;
             }
         } else {
+            // Если путь не существует
             if (pathInput.endsWith(".txt")) {
-                Path parent = path.getParent();
-                if (parent != null) createFolderIfNotExists(parent.toString());
+                Path parentOfPath = path.getParent();
+                if (parentOfPath != null) createFolderIfNotExists(parentOfPath.toString());
                 if (isValidFileName(path.getFileName().toString())) return path.toString();
                 System.out.println("Имя файла содержит недопустимые символы.");
                 return null;
             } else {
+                // считаем, что это папка: создаём папку (тут создаём, т.к. пользователь явно указал её)
                 createFolderIfNotExists(path.toString());
-                return path.resolve(defaultFileNameForMode(mode)).toString();
+                Path candidate = path.resolve(defaultFileNameForMode(mode));
+                int counter = 1;
+                while (Files.exists(candidate) || candidate.toAbsolutePath().normalize().equals(inputFile.toAbsolutePath().normalize())) {
+                    String newFileName = defaultFileNameForMode(mode).replace(".txt", "_" + counter + ".txt");
+                    candidate = path.resolve(newFileName);
+                    counter++;
+                }
+                return candidate.toString();
             }
         }
     }
@@ -144,7 +212,6 @@ public class ConsoleView implements View {
         return switch (mode) {
             case ENCODE -> "input.txt";
             case DECODE -> "output.txt";
-            case BRUTEFORCE -> "best.txt";
             default -> "result.txt";
         };
     }
@@ -159,6 +226,40 @@ public class ConsoleView implements View {
                 System.out.println("Не удалось создать папку: " + folder.toAbsolutePath());
                 e.printStackTrace();
             }
+        }
+    }
+
+    /**
+     * Возвращает уникальный путь для директории baseName (baseName, baseName_1, baseName_2 ...)
+     * НЕ создаёт директорию — только вычисляет первый свободный путь.
+     */
+    private Path createUniqueDir(Path parentOrAbsolute, String baseName) {
+        Path parentToUse = parentOrAbsolute;
+
+        // Если указан путь к файлу (contains dot) — используем его parent
+        String fname = parentOrAbsolute.getFileName().toString();
+        if (fname.contains(".") && !fname.endsWith(".")) {
+            if (parentOrAbsolute.getParent() != null) {
+                parentToUse = parentOrAbsolute.getParent();
+            } else {
+                parentToUse = Paths.get(".");
+            }
+        }
+
+        if (parentToUse == null) parentToUse = Paths.get(".");
+
+        Path base = parentToUse.resolve(baseName);
+        if (!Files.exists(base)) {
+            return base;
+        }
+
+        int counter = 1;
+        while (true) {
+            Path candidate = parentToUse.resolve(baseName + "_" + counter);
+            if (!Files.exists(candidate)) {
+                return candidate;
+            }
+            counter++;
         }
     }
 
