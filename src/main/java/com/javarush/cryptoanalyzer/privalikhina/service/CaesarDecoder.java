@@ -19,22 +19,13 @@ public class CaesarDecoder implements Function {
             String outputFile = parameters[1];
             int shift = Integer.parseInt(parameters[2]);
 
-            String alphabet = CryptoAlphabet.ALL_SYMBOLS;
-            int alphabetLength = alphabet.length();
-
             try (BufferedReader reader = new BufferedReader(new FileReader(inputFile));
                  FileWriter writer = new FileWriter(outputFile)) {
 
                 int character;
                 while ((character = reader.read()) != -1) {
                     char ch = (char) character;
-                    int index = alphabet.indexOf(ch);
-                    if (index != -1) {
-                        int newIndex = (index - shift + alphabetLength) % alphabetLength;
-                        writer.write(alphabet.charAt(newIndex));
-                    } else {
-                        writer.write(ch); // оставить символ, если его нет в алфавите
-                    }
+                    writer.write(unshiftChar(ch, shift));
                 }
             }
 
@@ -48,19 +39,40 @@ public class CaesarDecoder implements Function {
     // Используется в BruteForceDecoder
     public static String decode(String input, int shift) {
         StringBuilder result = new StringBuilder();
-        String alphabet = CryptoAlphabet.ALL_SYMBOLS;
-        int len = alphabet.length();
-
         for (char ch : input.toCharArray()) {
-            int index = alphabet.indexOf(ch);
-            if (index != -1) {
-                int newIndex = (index - shift + len) % len;
-                result.append(alphabet.charAt(newIndex));
-            } else {
-                result.append(ch);
-            }
+            result.append(unshiftChar(ch, shift));
         }
         return result.toString();
+    }
+
+    /**
+     * Сдвигает символ только в пределах его алфавитного набора:
+     * - русские строчные (RUS_LOWER)
+     * - русские заглавные (RUS_UPPER)
+     * - цифры (DIGITS)
+     * Иначе возвращает символ без изменений (пробелы, пунктуация и пр.).
+     */
+    private static char unshiftChar(char ch, int shift) {
+        String rusLower = CryptoAlphabet.RUS_LOWER;
+        String rusUpper = CryptoAlphabet.RUS_UPPER;
+        String digits = CryptoAlphabet.DIGITS;
+
+        if (rusLower.indexOf(ch) >= 0) {
+            int idx = rusLower.indexOf(ch);
+            int newIdx = Math.floorMod(idx - shift, rusLower.length());
+            return rusLower.charAt(newIdx);
+        } else if (rusUpper.indexOf(ch) >= 0) {
+            int idx = rusUpper.indexOf(ch);
+            int newIdx = Math.floorMod(idx - shift, rusUpper.length());
+            return rusUpper.charAt(newIdx);
+        } else if (digits.indexOf(ch) >= 0) {
+            int idx = digits.indexOf(ch);
+            int newIdx = Math.floorMod(idx - shift, digits.length());
+            return digits.charAt(newIdx);
+        } else {
+            // пробелы, знаки пунктуации и любые другие символы не трогаем
+            return ch;
+        }
     }
 }
 

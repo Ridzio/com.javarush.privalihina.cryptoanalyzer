@@ -41,10 +41,6 @@ public class Encode implements Function {
             return RUS_LOWER.charAt((RUS_LOWER.indexOf(ch) + shift) % RUS_LOWER.length());
         } else if (RUS_UPPER.indexOf(ch) != -1) {
             return RUS_UPPER.charAt((RUS_UPPER.indexOf(ch) + shift) % RUS_UPPER.length());
-        } else if (ENG_LOWER.indexOf(ch) != -1) {
-            return ENG_LOWER.charAt((ENG_LOWER.indexOf(ch) + shift) % ENG_LOWER.length());
-        } else if (ENG_UPPER.indexOf(ch) != -1) {
-            return ENG_UPPER.charAt((ENG_UPPER.indexOf(ch) + shift) % ENG_UPPER.length());
         } else if (DIGITS.indexOf(ch) != -1) {
             return DIGITS.charAt((DIGITS.indexOf(ch) + shift) % DIGITS.length());
         } else {
