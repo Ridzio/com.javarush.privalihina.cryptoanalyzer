@@ -86,15 +86,22 @@ public class ConsoleView implements View {
         }
     }
 
-    /**
-     * Расширенная версия resolveOutputFilePath:
-     * если путь пустой — создаётся decode.txt рядом с входным файлом.
-     */
     private String resolveOutputFilePath(String pathInput, String mode, String inputFilePath) {
         Path inputFile = Paths.get(inputFilePath);
 
+        // Если путь пустой — создаем файл с безопасным именем по умолчанию
         if (pathInput.isEmpty()) {
-            return inputFile.getParent().resolve("decode.txt").toString();
+            String defaultFileName = defaultFileNameForMode(mode); // input.txt / output.txt / best.txt
+            Path outputPath = inputFile.getParent().resolve(defaultFileName);
+
+            // Если файл уже существует, создаем уникальное имя
+            int counter = 1;
+            while (Files.exists(outputPath)) {
+                String newFileName = defaultFileName.replace(".txt", "_" + counter + ".txt");
+                outputPath = inputFile.getParent().resolve(newFileName);
+                counter++;
+            }
+            return outputPath.toString();
         }
 
         Path path = Paths.get(pathInput);
